@@ -249,7 +249,7 @@ class _TranslateScreenState extends State<TranslateScreen> {
       decoration: BoxDecoration(
         color: AppColors.fuvDim,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.fuv.withOpacity(0.3)),
+        border: Border.all(color: AppColors.fuv.withValues(alpha: 0.3)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

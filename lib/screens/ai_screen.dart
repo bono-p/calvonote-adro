@@ -207,7 +207,7 @@ class _AiScreenState extends State<AiScreen>
                   ),
                   decoration: BoxDecoration(
                     color: _activeAction == action.key
-                        ? AppColors.accent.withOpacity(0.15)
+                        ? AppColors.accent.withValues(alpha: 0.15)
                         : AppColors.surface,
                     borderRadius: BorderRadius.circular(10),
                     border: Border.all(
@@ -410,9 +410,9 @@ class _ChatBubble extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
           color: message.isUser
-              ? AppColors.accent.withOpacity(0.2)
+              ? AppColors.accent.withValues(alpha: 0.2)
               : message.isError
-                  ? AppColors.error.withOpacity(0.12)
+                  ? AppColors.error.withValues(alpha: 0.12)
                   : AppColors.surface,
           borderRadius: BorderRadius.circular(14).copyWith(
             bottomRight: message.isUser
@@ -424,7 +424,7 @@ class _ChatBubble extends StatelessWidget {
           ),
           border: Border.all(
             color: message.isUser
-                ? AppColors.accent.withOpacity(0.3)
+                ? AppColors.accent.withValues(alpha: 0.3)
                 : AppColors.cardBorder,
           ),
         ),

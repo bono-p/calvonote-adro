@@ -467,7 +467,7 @@ class _HomeScreenState extends State<HomeScreen> {
               scale: 0.8,
               child: Switch(
                 value:         _autoTranslateFuv,
-                activeColor:   AppColors.fuv,
+                activeThumbColor:   AppColors.fuv,
                 onChanged: (v) async {
                   setState(() => _autoTranslateFuv = v);
                   await _settings.setAutoTranslateFuv(v);
@@ -504,7 +504,7 @@ class _HomeScreenState extends State<HomeScreen> {
               scale: 0.8,
               child: Switch(
                 value:         _autoSpeakFuv,
-                activeColor:   AppColors.fuv,
+                activeThumbColor:   AppColors.fuv,
                 onChanged: (v) async {
                   setState(() => _autoSpeakFuv = v);
                   await _settings.setAutoSpeakFuv(v);
@@ -526,12 +526,12 @@ class _HomeScreenState extends State<HomeScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
         color: isError
-            ? AppColors.error.withOpacity(0.12)
+            ? AppColors.error.withValues(alpha: 0.12)
             : AppColors.card,
         borderRadius: BorderRadius.circular(10),
         border: Border.all(
           color: isError
-              ? AppColors.error.withOpacity(0.3)
+              ? AppColors.error.withValues(alpha: 0.3)
               : AppColors.cardBorder,
         ),
       ),

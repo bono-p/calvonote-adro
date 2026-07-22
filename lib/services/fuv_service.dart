@@ -146,7 +146,7 @@ class FuvService {
       }
     }
 
-    return FuvResult(success: false, text: '', error: lastErr);
+    return const FuvResult(success: false, text: '', error: lastErr);
   }
 
   Future<FuvResult> _tryGradio(String text, String src, String tgt) async {
@@ -201,7 +201,7 @@ class FuvService {
         success: false, text: '', error: 'Pas de connexion internet',
       );
     } catch (e) {
-      return FuvResult(success: false, text: '', error: 'Gradio: ${e.toString()}');
+      return const FuvResult(success: false, text: '', error: 'Gradio: ${e.toString()}');
     }
   }
 
@@ -269,7 +269,7 @@ class FuvService {
         success: false, text: '', error: 'Pas de connexion internet',
       );
     } catch (e) {
-      return FuvResult(success: false, text: '', error: 'TTS: ${e.toString()}');
+      return const FuvResult(success: false, text: '', error: 'TTS: ${e.toString()}');
     }
   }
 

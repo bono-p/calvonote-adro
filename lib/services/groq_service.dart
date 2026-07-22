@@ -17,7 +17,7 @@ const _timeoutSeconds  = 60;
 // ── Prompts système ───────────────────────────────────────────
 
 const _transcriptionCtx = '''
-IMPORTANT : Le texte reçu est le résultat brut d\'une transcription vocale (ASR).
+IMPORTANT : Le texte reçu est le résultat brut d'une transcription vocale (ASR).
 Il peut contenir des fautes phonétiques, des mots approximatifs, une ponctuation
 absente ou mal placée, des répétitions involontaires.
 ''';
@@ -27,12 +27,12 @@ final Map<String, String> _systemPrompts = {
 Tu es un correcteur expert de textes transcrits automatiquement (ASR).
 $_transcriptionCtx
 Ta tâche :
-1. Corriger toutes les fautes d\'orthographe, grammaire et conjugaison.
+1. Corriger toutes les fautes d'orthographe, grammaire et conjugaison.
 2. Rétablir une ponctuation correcte (virgules, points, apostrophes, majuscules).
 3. Corriger les confusions homophones (a/à, ou/où, ce/se, son/sont, etc.).
 4. Remplacer les mots incohérents par le terme probable dans le contexte.
 5. Ne pas reformuler, résumer, ni ajouter de contenu absent.
-6. Conserver le style et le registre de l\'auteur.
+6. Conserver le style et le registre de l'auteur.
 Réponds UNIQUEMENT avec le texte corrigé, sans commentaire ni balise.
 ''',
   'summarize': '''
@@ -49,7 +49,7 @@ Conserve scrupuleusement le sens et toutes les informations.
 Réponds uniquement avec le texte reformulé.
 ''',
   'keypoints': '''
-Tu es un assistant d\'analyse de texte.
+Tu es un assistant d'analyse de texte.
 $_transcriptionCtx
 Extrais les points clés sous forme de liste à puces (•), une idée par ligne.
 Réponds uniquement avec la liste.
@@ -73,7 +73,7 @@ Réponds uniquement avec la traduction.
 ''',
   'chat': '''
 Tu es un assistant intelligent intégré dans CalvoNote, logiciel de transcription vocale.
-Tu aides l\'utilisateur à travailler sur ses textes transcrits.
+Tu aides l'utilisateur à travailler sur ses textes transcrits.
 Note que les textes peuvent contenir des imperfections ASR.
 Tu réponds en français par défaut.
 Sois concis, utile et direct.
@@ -141,7 +141,7 @@ class GroqService {
       }
 
       final err = _parseError(response.body);
-      return GroqResult(success: false, text: '', error: 'Groq Whisper : $err');
+      return const GroqResult(success: false, text: '', error: 'Groq Whisper : $err');
 
     } on SocketException {
       return const GroqResult(
@@ -149,7 +149,7 @@ class GroqService {
         error: 'Pas de connexion internet',
       );
     } catch (e) {
-      return GroqResult(success: false, text: '', error: e.toString());
+      return const GroqResult(success: false, text: '', error: e.toString());
     }
   }
 
@@ -187,7 +187,7 @@ class GroqService {
       }
 
       final err = _parseError(response.body);
-      return GroqResult(success: false, text: '', error: 'Groq LLM : $err');
+      return const GroqResult(success: false, text: '', error: 'Groq LLM : $err');
 
     } on SocketException {
       return const GroqResult(
@@ -195,7 +195,7 @@ class GroqService {
         error: 'Pas de connexion internet',
       );
     } catch (e) {
-      return GroqResult(success: false, text: '', error: e.toString());
+      return const GroqResult(success: false, text: '', error: e.toString());
     }
   }
 
@@ -250,7 +250,7 @@ class GroqService {
         _chatHistory.removeLast();
       }
       final err = _parseError(response.body);
-      return GroqResult(success: false, text: '', error: 'Chat : $err');
+      return const GroqResult(success: false, text: '', error: 'Chat : $err');
 
     } on SocketException {
       if (_chatHistory.isNotEmpty && _chatHistory.last['role'] == 'user') {
@@ -264,7 +264,7 @@ class GroqService {
       if (_chatHistory.isNotEmpty && _chatHistory.last['role'] == 'user') {
         _chatHistory.removeLast();
       }
-      return GroqResult(success: false, text: '', error: e.toString());
+      return const GroqResult(success: false, text: '', error: e.toString());
     }
   }
 

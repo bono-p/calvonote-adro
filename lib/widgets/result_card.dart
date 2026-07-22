@@ -43,7 +43,7 @@ class ResultCard extends StatelessWidget {
         color: isFuv ? AppColors.fuvDim : AppColors.surface,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
-          color: isFuv ? AppColors.fuv.withOpacity(0.3) : AppColors.cardBorder,
+          color: isFuv ? AppColors.fuv.withValues(alpha: 0.3) : AppColors.cardBorder,
         ),
       ),
       child: Column(
@@ -56,7 +56,7 @@ class ResultCard extends StatelessWidget {
               border: Border(
                 bottom: BorderSide(
                   color: isFuv
-                      ? AppColors.fuv.withOpacity(0.2)
+                      ? AppColors.fuv.withValues(alpha: 0.2)
                       : AppColors.cardBorder,
                 ),
               ),

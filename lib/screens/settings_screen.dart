@@ -240,7 +240,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     child: ChoiceChip(
                       label: Text(l.$2),
                       selected: selected,
-                      selectedColor: AppColors.accent.withOpacity(0.2),
+                      selectedColor: AppColors.accent.withValues(alpha: 0.2),
                       labelStyle: TextStyle(
                         color: selected ? AppColors.accent : AppColors.textMuted,
                         fontSize: 13,
@@ -428,7 +428,7 @@ class _Toggle extends StatelessWidget {
         ),
         Switch(
           value: value,
-          activeColor: AppColors.fuv,
+          activeThumbColor: AppColors.fuv,
           onChanged: onChanged,
         ),
       ],
