@@ -1,0 +1,14 @@
+#!/usr/bin/env sh
+##############################################################################
+## Gradle start up script for UN*X
+## Auto-generated for CalvoNote — CalvoNote utilisera le Gradle de Codemagic
+##############################################################################
+GRADLE_APP_NAME="Gradle"
+APP_HOME="${APP_HOME:-$(cd "$(dirname "$0")" && pwd)}"
+
+# Utiliser GRADLE_HOME si défini (cas Codemagic)
+if [ -n "$GRADLE_HOME" ]; then
+    exec "$GRADLE_HOME/bin/gradle" "$@"
+fi
+
+exec "$APP_HOME/gradle/wrapper/gradle-wrapper.jar" "$@"

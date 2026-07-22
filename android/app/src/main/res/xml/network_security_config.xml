@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Politique réseau CalvoNote
+  Tous les appels sont en HTTPS (Groq, HuggingFace, Gradio)
+  Aucun trafic HTTP en clair autorisé.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+
+    <!-- Domaines explicites autorisés -->
+    <domain-config cleartextTrafficPermitted="false">
+        <domain includeSubdomains="true">api.groq.com</domain>
+        <domain includeSubdomains="true">api-inference.huggingface.co</domain>
+        <domain includeSubdomains="true">huggingface.co</domain>
+        <domain includeSubdomains="true">bonopassale-fr-fulfulde-translator.hf.space</domain>
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </domain-config>
+</network-security-config>
