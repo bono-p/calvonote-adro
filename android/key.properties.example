@@ -1,0 +1,12 @@
+{
+  "stores": [
+    {
+      "path": "/root/.android/debug.keystore",
+      "properties": {
+        "keyAlias": "androiddebugkey",
+        "keyPassword": "android",
+        "storePassword": "android"
+      }
+    }
+  ]
+}

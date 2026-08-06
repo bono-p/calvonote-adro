@@ -1,19 +1,13 @@
 import 'package:flutter/material.dart';
-import '../services/audio_service.dart';
+import 'package:permission_handler/permission_handler.dart';
+import '../models/transcription_entry.dart';
+import '../services/audio_recorder_service.dart';
 import '../services/groq_service.dart';
-import '../services/fuv_service.dart';
 import '../services/settings_service.dart';
 import '../widgets/record_button.dart';
 import '../widgets/result_card.dart';
-import '../theme/app_theme.dart';
+import 'history_screen.dart';
 import 'settings_screen.dart';
-import 'translate_screen.dart';
-import 'ai_screen.dart';
-
-// ─────────────────────────────────────────────────────────────
-//  ÉCRAN PRINCIPAL — CalvoNote
-//  Enregistrement → Transcription → Traduction Fulfulde → Lecture
-// ─────────────────────────────────────────────────────────────
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -22,224 +16,25 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
+enum _Stage { idle, recording, transcribing, translating, done }
+
 class _HomeScreenState extends State<HomeScreen> {
-  final _settings = SettingsService();
-  late GroqService  _groq;
-  late FuvService   _fuv;
-  final _audio      = AudioService();
+  final _audio = AudioRecorderService.instance;
+  final _groq = GroqService.instance;
+  final _settings = SettingsService.instance;
 
-  // État
-  bool   _recording        = false;
-  bool   _transcribing     = false;
-  bool   _translating      = false;
-  bool   _synthesizing     = false;
-  bool   _playingFuv       = false;
-  bool   _playingFr        = false;
-  String _transcription    = '';
-  String _fuvTranslation   = '';
-  String _fuvAudioPath     = '';
-  String _selectedLang     = 'fr';
-  bool   _autoTranslateFuv = true;
-  bool   _autoSpeakFuv     = false;
-  String _status           = '';
-
-  // Langues disponibles
-  static const _langs = [
-    ('fr', '🇫🇷 Français'),
-    ('en', '🇬🇧 English'),
-    ('fuv', '🌍 Fulfulde'),
-  ];
+  String _selectedLang = 'fr';
+  _Stage _stage = _Stage.idle;
+  String _transcription = '';
+  String _translation = '';
+  String? _error;
+  Duration _recordDuration = Duration.zero;
 
   @override
   void initState() {
     super.initState();
-    _groq = GroqService(apiKey: '');
-    _fuv  = FuvService(hfToken: '');
-    _init();
+    _selectedLang = _settings.defaultLanguage;
   }
-
-  Future<void> _init() async {
-    await _audio.init();
-    final s = await _settings.loadAll();
-    _groq.updateCredentials(s.groqKey, model: s.groqModel);
-    _fuv.updateToken(s.hfToken);
-    setState(() {
-      _selectedLang     = s.defaultLanguage;
-      _autoTranslateFuv = s.autoTranslateFuv;
-      _autoSpeakFuv     = s.autoSpeakFuv;
-    });
-  }
-
-  Future<void> _reloadSettings() async {
-    final s = await _settings.loadAll();
-    _groq.updateCredentials(s.groqKey, model: s.groqModel);
-    _fuv.updateToken(s.hfToken);
-    setState(() {
-      _autoTranslateFuv = s.autoTranslateFuv;
-      _autoSpeakFuv     = s.autoSpeakFuv;
-    });
-  }
-
-  // ── Enregistrement ────────────────────────────────────────────
-
-  Future<void> _toggleRecording() async {
-    if (_recording) {
-      await _stopAndProcess();
-    } else {
-      await _startRecording();
-    }
-  }
-
-  Future<void> _startRecording() async {
-    final ok = await _audio.startRecording();
-    if (!ok) {
-      _setStatus('❌ Permission micro refusée ou enregistrement impossible');
-      return;
-    }
-    setState(() {
-      _recording     = true;
-      _transcription = '';
-      _fuvTranslation = '';
-      _fuvAudioPath  = '';
-      _status        = '🎙️ Enregistrement en cours…';
-    });
-  }
-
-  Future<void> _stopAndProcess() async {
-    final path = await _audio.stopRecording();
-    setState(() {
-      _recording    = false;
-      _transcribing = true;
-      _status       = '⏳ Transcription en cours…';
-    });
-
-    if (path == null) {
-      setState(() {
-        _transcribing = false;
-        _status = '❌ Fichier audio introuvable';
-      });
-      return;
-    }
-
-    // Transcription via Groq Whisper
-    final result = await _groq.transcribe(
-      path,
-      language: _selectedLang == 'fuv' ? 'fr' : _selectedLang,
-    );
-
-    setState(() {
-      _transcribing  = false;
-      _transcription = result.success ? result.text : '';
-      _status        = result.success
-          ? '✓ Transcription terminée'
-          : '❌ ${result.error}';
-    });
-
-    if (!result.success) return;
-
-    // Traduction automatique vers Fulfulde si activée
-    if (_autoTranslateFuv && _selectedLang == 'fr') {
-      await _translateToFuv();
-    }
-  }
-
-  // ── Traduction vers Fulfulde ──────────────────────────────────
-
-  Future<void> _translateToFuv() async {
-    if (_transcription.isEmpty) return;
-
-    setState(() {
-      _translating    = true;
-      _fuvTranslation = '';
-      _fuvAudioPath   = '';
-      _status         = '⏳ Traduction Fulfulde en cours…';
-    });
-
-    final result = await _fuv.translate(_transcription, src: 'fr', tgt: 'fuv');
-
-    setState(() {
-      _translating    = false;
-      _fuvTranslation = result.success ? result.text : '';
-      _status         = result.success
-          ? '✓ Traduction terminée'
-          : '❌ ${result.error}';
-    });
-
-    if (result.success && _autoSpeakFuv) {
-      await _speakFuv();
-    }
-  }
-
-  // ── Lecture Fulfulde ──────────────────────────────────────────
-
-  Future<void> _speakFuv() async {
-    if (_fuvTranslation.isEmpty) return;
-
-    // Utiliser le cache audio si disponible
-    if (_fuvAudioPath.isNotEmpty) {
-      setState(() { _playingFuv = true; });
-      await _audio.playWav(
-        _fuvAudioPath,
-        onComplete: () => setState(() { _playingFuv = false; }),
-      );
-      return;
-    }
-
-    setState(() {
-      _synthesizing = true;
-      _status       = '⏳ Génération audio Fulfulde…';
-    });
-
-    final result = await _fuv.synthesize(_fuvTranslation);
-
-    setState(() {
-      _synthesizing = false;
-    });
-
-    if (!result.success) {
-      _setStatus('❌ TTS Fulfulde : ${result.error}');
-      return;
-    }
-
-    _fuvAudioPath = result.audioPath ?? '';
-    setState(() { _playingFuv = true; _status = '🔊 Lecture Fulfulde…'; });
-
-    await _audio.playWav(
-      _fuvAudioPath,
-      onComplete: () => setState(() { _playingFuv = false; _status = ''; }),
-    );
-  }
-
-  Future<void> _stopFuv() async {
-    await _audio.stopPlayback();
-    setState(() { _playingFuv = false; });
-  }
-
-  // ── Lecture transcription (TTS natif) ────────────────────────
-
-  Future<void> _speakTranscription() async {
-    if (_transcription.isEmpty) return;
-    setState(() { _playingFr = true; });
-    final lang = _selectedLang == 'en' ? 'en-US' : 'fr-FR';
-    await _audio.speak(
-      _transcription,
-      language: lang,
-      onComplete: () => setState(() { _playingFr = false; }),
-    );
-    setState(() { _playingFr = false; });
-  }
-
-  Future<void> _stopFr() async {
-    await _audio.stopTts();
-    setState(() { _playingFr = false; });
-  }
-
-  // ── Utilitaires ───────────────────────────────────────────────
-
-  void _setStatus(String msg) => setState(() => _status = msg);
-
-  bool get _isBusy =>
-      _transcribing || _translating || _synthesizing;
 
   @override
   void dispose() {
@@ -247,333 +42,309 @@ class _HomeScreenState extends State<HomeScreen> {
     super.dispose();
   }
 
-  // ── UI ────────────────────────────────────────────────────────
+  bool get _isBusy =>
+      _stage == _Stage.transcribing || _stage == _Stage.translating;
+
+  Future<void> _onRecordPressed() async {
+    if (_stage == _Stage.recording) {
+      await _stopAndProcess();
+    } else {
+      await _startRecording();
+    }
+  }
+
+  Future<void> _startRecording() async {
+    setState(() {
+      _error = null;
+      _transcription = '';
+      _translation = '';
+      _recordDuration = Duration.zero;
+    });
+
+    // Vérifie la clé API avant tout
+    if (_settings.groqApiKey.isEmpty) {
+      setState(() => _error =
+          'Clé API Groq manquante. Ouvrez les Paramètres pour la configurer.');
+      _openSettings();
+      return;
+    }
+
+    // Permission micro
+    final status = await Permission.microphone.request();
+    if (!status.isGranted) {
+      setState(() => _error = 'Permission micro refusée.');
+      return;
+    }
+
+    try {
+      await _audio.start();
+      setState(() => _stage = _Stage.recording);
+      _startTimer();
+    } catch (e) {
+      setState(() => _error = 'Erreur démarrage enregistrement : $e');
+    }
+  }
+
+  void _startTimer() {
+    Future.doWhile(() async {
+      await Future.delayed(const Duration(seconds: 1));
+      if (_stage != _Stage.recording) return false;
+      setState(() => _recordDuration += const Duration(seconds: 1));
+      return true;
+    });
+  }
+
+  Future<void> _stopAndProcess() async {
+    String? audioPath;
+    try {
+      audioPath = await _audio.stop();
+    } catch (e) {
+      setState(() {
+        _stage = _Stage.idle;
+        _error = 'Erreur arrêt enregistrement : $e';
+      });
+      return;
+    }
+    if (audioPath == null) {
+      setState(() => _stage = _Stage.idle);
+      return;
+    }
+
+    // 1) Transcription
+    setState(() {
+      _stage = _Stage.transcribing;
+      _error = null;
+    });
+    try {
+      final text = await _groq.transcribe(
+        audioPath: audioPath,
+        language: _selectedLang,
+        apiKey: _settings.groqApiKey,
+      );
+      setState(() => _transcription = text);
+
+      if (text.isEmpty) {
+        setState(() {
+          _stage = _Stage.done;
+          _translation = '(Aucun discours détecté)';
+        });
+        await _saveHistory(audioPath, text, '', null);
+        return;
+      }
+    } catch (e) {
+      setState(() {
+        _stage = _Stage.done;
+        _error = 'Transcription échouée : $e';
+      });
+      await _saveHistory(audioPath, '', '', e.toString());
+      return;
+    }
+
+    // 2) Traduction FR→Fulfulde
+    setState(() {
+      _stage = _Stage.translating;
+    });
+    try {
+      final translated = await _groq.translateToFulfulde(
+        text: _transcription,
+        sourceLang: _selectedLang,
+        apiKey: _settings.groqApiKey,
+      );
+      setState(() {
+        _translation = translated;
+        _stage = _Stage.done;
+      });
+      await _saveHistory(audioPath, _transcription, translated, null);
+    } catch (e) {
+      setState(() {
+        _translation = '';
+        _error = 'Traduction échouée : $e';
+        _stage = _Stage.done;
+      });
+      await _saveHistory(audioPath, _transcription, '', e.toString());
+    }
+  }
+
+  Future<void> _saveHistory(
+    String audioPath,
+    String transcription,
+    String translation,
+    String? error,
+  ) async {
+    final entry = TranscriptionEntry(
+      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      audioPath: audioPath,
+      language: _selectedLang,
+      transcription: transcription,
+      translation: translation,
+      createdAt: DateTime.now(),
+      errorMessage: error,
+    );
+    await _settings.addHistory(entry.toJson());
+  }
+
+  void _openSettings() {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const SettingsScreen()),
+    );
+  }
+
+  void _openHistory() {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const HistoryScreen()),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isRecording = _stage == _Stage.recording;
+
     return Scaffold(
-      backgroundColor: AppColors.bg,
-      appBar: _buildAppBar(),
-      body: _buildBody(),
-    );
-  }
-
-  AppBar _buildAppBar() {
-    return AppBar(
-      title: RichText(
-        text: const TextSpan(
-          children: [
-            TextSpan(
-              text: 'Calvo',
-              style: TextStyle(
-                fontSize: 20, fontWeight: FontWeight.w800,
-                color: AppColors.accent,
-              ),
-            ),
-            TextSpan(
-              text: 'Note',
-              style: TextStyle(
-                fontSize: 20, fontWeight: FontWeight.w400,
-                color: AppColors.text,
-              ),
-            ),
-          ],
-        ),
-      ),
-      actions: [
-        // Accès traduction manuelle
-        IconButton(
-          icon: const Icon(Icons.translate_rounded),
-          tooltip: 'Traduction FR ↔ Fulfulde',
-          color: AppColors.fuv,
-          onPressed: () => Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => TranslateScreen(fuvService: _fuv),
-            ),
+      appBar: AppBar(
+        title: const Text('CalvoNote'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.history),
+            tooltip: 'Historique',
+            onPressed: _openHistory,
           ),
-        ),
-        // Accès IA
-        IconButton(
-          icon: const Icon(Icons.auto_awesome_rounded),
-          tooltip: 'Outils IA',
-          color: AppColors.accent,
-          onPressed: _transcription.isEmpty
-              ? null
-              : () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => AiScreen(
-                        groqService: _groq,
-                        initialText: _transcription,
-                      ),
-                    ),
-                  ),
-        ),
-        // Paramètres
-        IconButton(
-          icon: const Icon(Icons.settings_rounded),
-          tooltip: 'Paramètres',
-          onPressed: () async {
-            await Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const SettingsScreen()),
-            );
-            await _reloadSettings();
-          },
-        ),
-      ],
-    );
-  }
-
-  Widget _buildBody() {
-    return SafeArea(
-      child: SingleChildScrollView(
+          IconButton(
+            icon: const Icon(Icons.settings),
+            tooltip: 'Paramètres',
+            onPressed: _openSettings,
+          ),
+        ],
+      ),
+      body: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _buildLangSelector(),
-            const SizedBox(height: 20),
-            _buildRecordSection(),
-            const SizedBox(height: 20),
-            if (_transcription.isNotEmpty || _transcribing)
-              _buildTranscriptionCard(),
-            if (_transcription.isNotEmpty || _transcribing)
-              const SizedBox(height: 12),
-            if (_selectedLang == 'fr')
-              _buildFuvSection(),
-            if (_status.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.only(top: 12),
-                child: _buildStatusBar(),
-              ),
-            const SizedBox(height: 32),
-          ],
-        ),
-      ),
-    );
-  }
+            // Sélecteur de langue
+            _buildLanguageSelector(theme),
+            const SizedBox(height: 8),
 
-  // ── Sélecteur de langue ───────────────────────────────────────
-
-  Widget _buildLangSelector() {
-    return Container(
-      padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.cardBorder),
-      ),
-      child: Row(
-        children: _langs.map((lang) {
-          final selected = _selectedLang == lang.$1;
-          return Expanded(
-            child: GestureDetector(
-              onTap: _isBusy || _recording
-                  ? null
-                  : () => setState(() => _selectedLang = lang.$1),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                padding: const EdgeInsets.symmetric(vertical: 10),
-                decoration: BoxDecoration(
-                  color: selected ? AppColors.accent : Colors.transparent,
-                  borderRadius: BorderRadius.circular(9),
-                ),
+            // Indicateur durée si enregistrement
+            if (isRecording)
+              Center(
                 child: Text(
-                  lang.$2,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: selected ? FontWeight.w700 : FontWeight.w400,
-                    color: selected ? Colors.white : AppColors.textMuted,
+                  _formatDuration(_recordDuration),
+                  style: theme.textTheme.headlineSmall?.copyWith(
+                    color: Colors.red,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
               ),
-            ),
-          );
-        }).toList(),
-      ),
-    );
-  }
+            const SizedBox(height: 16),
 
-  // ── Section enregistrement ────────────────────────────────────
-
-  Widget _buildRecordSection() {
-    return Column(
-      children: [
-        RecordButton(
-          isRecording: _recording,
-          isLoading:   _isBusy,
-          onTap:       _isBusy ? () {} : _toggleRecording,
-        ),
-        const SizedBox(height: 14),
-        Text(
-          _recording
-              ? 'Appuie pour arrêter'
-              : _isBusy
-                  ? 'Traitement en cours…'
-                  : 'Appuie pour parler',
-          style: TextStyle(
-            color: _recording ? AppColors.recording : AppColors.textMuted,
-            fontSize: 13,
-            fontWeight: _recording ? FontWeight.w600 : FontWeight.w400,
-          ),
-        ),
-      ],
-    );
-  }
-
-  // ── Carte transcription ───────────────────────────────────────
-
-  Widget _buildTranscriptionCard() {
-    return ResultCard(
-      title:       'TRANSCRIPTION',
-      text:        _transcribing ? '' : _transcription,
-      isPlaying:   _playingFr,
-      isLoading:   _transcribing || _playingFr && false,
-      onSpeak:     _transcription.isEmpty ? null : _speakTranscription,
-      onStop:      _stopFr,
-      onClear:     () => setState(() {
-        _transcription  = '';
-        _fuvTranslation = '';
-        _fuvAudioPath   = '';
-      }),
-      extraActions: _selectedLang == 'fr' && _transcription.isNotEmpty
-          ? [
-              _TranslateBtn(
-                loading: _translating,
-                onTap:   _translateToFuv,
-              ),
-            ]
-          : null,
-    );
-  }
-
-  // ── Section Fulfulde ──────────────────────────────────────────
-
-  Widget _buildFuvSection() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // Toggle auto-traduction
-        Row(
-          children: [
-            const Text(
-              'Traduction automatique',
-              style: TextStyle(fontSize: 12, color: AppColors.textMuted),
-            ),
-            const Spacer(),
-            Transform.scale(
-              scale: 0.8,
-              child: Switch(
-                value:         _autoTranslateFuv,
-                activeThumbColor:   AppColors.fuv,
-                onChanged: (v) async {
-                  setState(() => _autoTranslateFuv = v);
-                  await _settings.setAutoTranslateFuv(v);
-                },
+            // Bouton enregistrement
+            Center(
+              child: RecordButton(
+                isRecording: isRecording,
+                isProcessing: _isBusy,
+                onPressed: _onRecordPressed,
               ),
             ),
-          ],
-        ),
-        const SizedBox(height: 6),
-        ResultCard(
-          title:      'FULFULDE ADAMAWA',
-          text:       _translating ? '' : _fuvTranslation,
-          accentColor: AppColors.fuv,
-          isFuv:      true,
-          isPlaying:  _playingFuv,
-          isLoading:  _translating || _synthesizing,
-          onSpeak:    _fuvTranslation.isEmpty ? null : _speakFuv,
-          onStop:     _stopFuv,
-          onClear:    () => setState(() {
-            _fuvTranslation = '';
-            _fuvAudioPath   = '';
-          }),
-        ),
-        const SizedBox(height: 8),
-        // Toggle lecture auto
-        Row(
-          children: [
-            const Text(
-              'Lecture automatique après traduction',
-              style: TextStyle(fontSize: 12, color: AppColors.textMuted),
-            ),
-            const Spacer(),
-            Transform.scale(
-              scale: 0.8,
-              child: Switch(
-                value:         _autoSpeakFuv,
-                activeThumbColor:   AppColors.fuv,
-                onChanged: (v) async {
-                  setState(() => _autoSpeakFuv = v);
-                  await _settings.setAutoSpeakFuv(v);
-                },
+            const SizedBox(height: 8),
+            Center(
+              child: Text(
+                isRecording
+                    ? 'Enregistrement… touchez pour arrêter'
+                    : (_isBusy
+                        ? 'Traitement…'
+                        : 'Touchez le micro pour enregistrer'),
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
               ),
             ),
-          ],
-        ),
-      ],
-    );
-  }
 
-  // ── Barre de statut ───────────────────────────────────────────
+            const SizedBox(height: 24),
+            const Divider(),
+            const SizedBox(height: 8),
 
-  Widget _buildStatusBar() {
-    final isError = _status.startsWith('❌');
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      decoration: BoxDecoration(
-        color: isError
-            ? AppColors.error.withValues(alpha: 0.12)
-            : AppColors.card,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(
-          color: isError
-              ? AppColors.error.withValues(alpha: 0.3)
-              : AppColors.cardBorder,
-        ),
-      ),
-      child: Text(
-        _status,
-        style: TextStyle(
-          fontSize: 12,
-          color: isError ? AppColors.error : AppColors.textMuted,
-        ),
-      ),
-    );
-  }
-}
-
-// ── Mini widget bouton Traduire ───────────────────────────────
-
-class _TranslateBtn extends StatelessWidget {
-  final bool         loading;
-  final VoidCallback onTap;
-
-  const _TranslateBtn({required this.loading, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return Tooltip(
-      message: 'Traduire en Fulfulde',
-      child: InkWell(
-        onTap: loading ? null : onTap,
-        borderRadius: BorderRadius.circular(6),
-        child: Padding(
-          padding: const EdgeInsets.all(5),
-          child: loading
-              ? const SizedBox(
-                  width: 18, height: 18,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2, color: AppColors.fuv,
+            // Résultats
+            Expanded(
+              child: ListView(
+                children: [
+                  ResultCard(
+                    title: 'Transcription',
+                    languageLabel: _selectedLang == 'fr' ? 'FR' : 'EN',
+                    content: _transcription,
+                    isLoading: _stage == _Stage.transcribing,
                   ),
-                )
-              : const Icon(Icons.translate_rounded,
-                  size: 18, color: AppColors.fuv),
+                  ResultCard(
+                    title: 'Traduction Fulfulde',
+                    languageLabel: 'fuv',
+                    content: _translation,
+                    isLoading: _stage == _Stage.translating,
+                  ),
+                  if (_error != null && _stage == _Stage.done) ...[
+                    const SizedBox(height: 8),
+                    Card(
+                      color: theme.colorScheme.errorContainer,
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Row(
+                          children: [
+                            Icon(Icons.warning_amber,
+                                color: theme.colorScheme.onErrorContainer),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                _error!,
+                                style: TextStyle(
+                                    color: theme.colorScheme.onErrorContainer),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );
+  }
+
+  Widget _buildLanguageSelector(ThemeData theme) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        child: Row(
+          children: [
+            Text('Langue source :',
+                style: theme.textTheme.titleMedium),
+            const SizedBox(width: 16),
+            ChoiceChip(
+              label: const Text('Français'),
+              selected: _selectedLang == 'fr',
+              onSelected: _stage == _Stage.idle || _stage == _Stage.done
+                  ? (_) => setState(() => _selectedLang = 'fr')
+                  : null,
+            ),
+            const SizedBox(width: 8),
+            ChoiceChip(
+              label: const Text('Anglais'),
+              selected: _selectedLang == 'en',
+              onSelected: _stage == _Stage.idle || _stage == _Stage.done
+                  ? (_) => setState(() => _selectedLang = 'en')
+                  : null,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _formatDuration(Duration d) {
+    final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
+    final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
+    return '$m:$s';
   }
 }

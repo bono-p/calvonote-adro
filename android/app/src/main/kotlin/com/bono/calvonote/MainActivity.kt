@@ -1,4 +1,4 @@
-package com.devlab.calvonote
+package com.bono.calvonote
 
 import io.flutter.embedding.android.FlutterActivity
 

@@ -2,305 +2,145 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
 
-// ─────────────────────────────────────────────────────────────
-//  SERVICE GROQ
-//  - Transcription audio via Whisper large-v3-turbo
-//  - Actions IA : correction, résumé, reformulation, points clés,
-//    titres, traduction FR↔EN, chat
-// ─────────────────────────────────────────────────────────────
+/// Service d'intégration avec l'API Groq.
+/// 1) transcription via Whisper Large v3
+/// 2) traduction vers le Fulfulde Adamawa via Llama 3.3 70B
+class GroqService {
+  GroqService._();
+  static final GroqService instance = GroqService._();
 
-const _groqBase        = 'https://api.groq.com/openai/v1';
-const _whisperModel    = 'whisper-large-v3-turbo';
-const _defaultLLM      = 'llama-3.3-70b-versatile';
-const _timeoutSeconds  = 60;
+  static const String _baseUrl = 'https://api.groq.com/openai/v1';
+  static const String _sttModel = 'whisper-large-v3';
+  static const String _llmModel = 'llama-3.3-70b-versatile';
 
-// ── Prompts système ───────────────────────────────────────────
+  /// Transcrit un fichier audio en texte.
+  /// [audioPath] : chemin local du fichier .m4a
+  /// [language]  : 'fr' ou 'en' (code ISO 639-1)
+  /// [apiKey]    : clé API Groq
+  ///
+  /// Retourne le texte transcrit. Lève [GroqException] en cas d'erreur.
+  Future<String> transcribe({
+    required String audioPath,
+    required String language,
+    required String apiKey,
+  }) async {
+    final file = File(audioPath);
+    if (!await file.exists()) {
+      throw GroqException('Fichier audio introuvable : $audioPath');
+    }
 
-const _transcriptionCtx = '''
-IMPORTANT : Le texte reçu est le résultat brut d'une transcription vocale (ASR).
-Il peut contenir des fautes phonétiques, des mots approximatifs, une ponctuation
-absente ou mal placée, des répétitions involontaires.
+    final uri = Uri.parse('$_baseUrl/audio/transcriptions');
+    final request = http.MultipartRequest('POST', uri)
+      ..headers['Authorization'] = 'Bearer $apiKey'
+      ..fields['model'] = _sttModel
+      ..fields['language'] = language
+      ..fields['response_format'] = 'json'
+      ..files.add(await http.MultipartFile.fromPath('file', audioPath,
+          filename: audioPath.split('/').last));
+
+    final streamedResponse = await request.send().timeout(
+      const Duration(seconds: 120),
+      onTimeout: () =>
+          throw GroqException('Timeout : la transcription a pris trop de temps'),
+    );
+
+    final response = await http.Response.fromStream(streamedResponse);
+
+    if (response.statusCode != 200) {
+      throw GroqException(_extractError(response.body, response.statusCode));
+    }
+
+    final decoded = jsonDecode(response.body);
+    if (decoded is! Map || decoded['text'] == null) {
+      throw GroqException('Réponse Whisper inattendue : ${response.body}');
+    }
+    return (decoded['text'] as String).trim();
+  }
+
+  /// Traduit un texte en Fulfulde Adamawa.
+  /// [text]   : texte source (FR ou EN)
+  /// [sourceLang] : 'fr' ou 'en'
+  /// [apiKey] : clé API Groq
+  Future<String> translateToFulfulde({
+    required String text,
+    required String sourceLang,
+    required String apiKey,
+  }) async {
+    if (text.trim().isEmpty) return '';
+
+    final sourceName = sourceLang == 'fr' ? 'français' : 'anglais';
+
+    final systemPrompt = '''
+Tu es un traducteur expert spécialisé dans la traduction vers le fulfulde Adamawa (also called Fula/Fulani, ISO code fuv).
+Ta seule tâche est de produire une traduction fidèle, naturelle et idiomatique en fulfulde Adamawa.
+- Ne renvoie QUE la traduction, sans commentaire, sans note, sans texte source.
+- Ne mets pas la traduction entre guillemets.
+- Conserve la ponctuation de fin de phrase.
+- Si un mot n'a pas d'équivalent direct, utilise la translittération la plus courante.
 ''';
 
-final Map<String, String> _systemPrompts = {
-  'correct': '''
-Tu es un correcteur expert de textes transcrits automatiquement (ASR).
-$_transcriptionCtx
-Ta tâche :
-1. Corriger toutes les fautes d'orthographe, grammaire et conjugaison.
-2. Rétablir une ponctuation correcte (virgules, points, apostrophes, majuscules).
-3. Corriger les confusions homophones (a/à, ou/où, ce/se, son/sont, etc.).
-4. Remplacer les mots incohérents par le terme probable dans le contexte.
-5. Ne pas reformuler, résumer, ni ajouter de contenu absent.
-6. Conserver le style et le registre de l'auteur.
-Réponds UNIQUEMENT avec le texte corrigé, sans commentaire ni balise.
-''',
-  'summarize': '''
-Tu es un assistant expert en synthèse de textes francophones.
-$_transcriptionCtx
-Génère un résumé clair et fidèle en 3 à 5 phrases.
-Réponds uniquement avec le résumé, sans introduction ni conclusion.
-''',
-  'rephrase': '''
-Tu es un rédacteur professionnel francophone.
-$_transcriptionCtx
-Reformule le texte avec un style fluide, naturel et bien structuré.
-Conserve scrupuleusement le sens et toutes les informations.
-Réponds uniquement avec le texte reformulé.
-''',
-  'keypoints': '''
-Tu es un assistant d'analyse de texte.
-$_transcriptionCtx
-Extrais les points clés sous forme de liste à puces (•), une idée par ligne.
-Réponds uniquement avec la liste.
-''',
-  'title': '''
-Tu es un rédacteur créatif.
-$_transcriptionCtx
-Génère 3 titres accrocheurs numérotés (1. 2. 3.).
-Réponds uniquement avec les 3 titres.
-''',
-  'translate_fr_en': '''
-Tu es un traducteur professionnel français-anglais.
-$_transcriptionCtx
-Traduis en anglais de manière naturelle et précise.
-Réponds uniquement avec la traduction.
-''',
-  'translate_en_fr': '''
-Tu es un traducteur professionnel anglais-français.
-Traduis en français de manière naturelle et précise.
-Réponds uniquement avec la traduction.
-''',
-  'chat': '''
-Tu es un assistant intelligent intégré dans CalvoNote, logiciel de transcription vocale.
-Tu aides l'utilisateur à travailler sur ses textes transcrits.
-Note que les textes peuvent contenir des imperfections ASR.
-Tu réponds en français par défaut.
-Sois concis, utile et direct.
-''',
-};
+    final userPrompt =
+        "Traduis le texte suivant du $sourceName vers le fulfulde Adamawa :\n\n\"\"\"\n$text\n\"\"\"";
 
-// ── Modèle résultat ───────────────────────────────────────────
+    final uri = Uri.parse('$_baseUrl/chat/completions');
+    final response = await http.post(
+      uri,
+      headers: {
+        'Authorization': 'Bearer $apiKey',
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode({
+        'model': _llmModel,
+        'temperature': 0.2,
+        'messages': [
+          {'role': 'system', 'content': systemPrompt},
+          {'role': 'user', 'content': userPrompt},
+        ],
+      }),
+    ).timeout(
+      const Duration(seconds: 90),
+      onTimeout: () =>
+          throw GroqException('Timeout : la traduction a pris trop de temps'),
+    );
 
-class GroqResult {
-  final bool   success;
-  final String text;
-  final String? error;
-  const GroqResult({required this.success, required this.text, this.error});
-}
+    if (response.statusCode != 200) {
+      throw GroqException(_extractError(response.body, response.statusCode));
+    }
 
-// ── Classe principale ─────────────────────────────────────────
-
-class GroqService {
-  String _apiKey;
-  String _model;
-  final List<Map<String, String>> _chatHistory = [];
-
-  GroqService({required String apiKey, String model = _defaultLLM})
-      : _apiKey = apiKey,
-        _model  = model;
-
-  void updateCredentials(String apiKey, {String? model}) {
-    _apiKey = apiKey;
-    if (model != null) _model = model;
+    final decoded = jsonDecode(response.body);
+    if (decoded is! Map) {
+      throw GroqException('Réponse LLM inattendue : ${response.body}');
+    }
+    final choices = decoded['choices'];
+    if (choices is! List || choices.isEmpty) {
+      throw GroqException('Aucun choix renvoyé par le LLM');
+    }
+    final content = choices[0]['message']?['content'];
+    if (content == null) {
+      throw GroqException('Contenu vide renvoyé par le LLM');
+    }
+    return (content as String).trim();
   }
 
-  bool get isConfigured => _apiKey.trim().isNotEmpty;
-
-  // ── Transcription audio (Whisper) ─────────────────────────────
-
-  Future<GroqResult> transcribe(
-    String audioPath, {
-    String language = 'fr',
-  }) async {
-    if (!isConfigured) {
-      return const GroqResult(success: false, text: '', error: 'Clé API Groq manquante');
-    }
-
+  String _extractError(String body, int statusCode) {
     try {
-      final file    = File(audioPath);
-      final request = http.MultipartRequest(
-        'POST',
-        Uri.parse('$_groqBase/audio/transcriptions'),
-      );
-      request.headers['Authorization'] = 'Bearer $_apiKey';
-      request.files.add(await http.MultipartFile.fromPath('file', file.path));
-      request.fields['model']          = _whisperModel;
-      request.fields['language']       = language;
-      request.fields['response_format'] = 'json';
-
-      final streamed  = await request.send().timeout(
-        Duration(seconds: _timeoutSeconds),
-      );
-      final response  = await http.Response.fromStream(streamed);
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body) as Map<String, dynamic>;
-        final text = (data['text'] as String? ?? '').trim();
-        return GroqResult(success: text.isNotEmpty, text: text);
+      final decoded = jsonDecode(body);
+      if (decoded is Map && decoded['error'] is Map) {
+        final msg = decoded['error']['message'];
+        if (msg is String && msg.isNotEmpty) {
+          return 'Erreur Groq ($statusCode) : $msg';
+        }
       }
-
-      final err = _parseError(response.body);
-      return const GroqResult(success: false, text: '', error: 'Groq Whisper : $err');
-
-    } on SocketException {
-      return const GroqResult(
-        success: false, text: '',
-        error: 'Pas de connexion internet',
-      );
-    } catch (e) {
-      return const GroqResult(success: false, text: '', error: e.toString());
-    }
-  }
-
-  // ── Action IA sur texte ───────────────────────────────────────
-
-  Future<GroqResult> runAction(String actionKey, String text) async {
-    if (!isConfigured) {
-      return const GroqResult(success: false, text: '', error: 'Clé API Groq manquante');
-    }
-
-    final systemPrompt = _systemPrompts[actionKey] ?? _systemPrompts['chat']!;
-
-    try {
-      final response = await http.post(
-        Uri.parse('$_groqBase/chat/completions'),
-        headers: {
-          'Authorization': 'Bearer $_apiKey',
-          'Content-Type': 'application/json',
-        },
-        body: jsonEncode({
-          'model': _model,
-          'messages': [
-            {'role': 'system',  'content': systemPrompt},
-            {'role': 'user',    'content': text},
-          ],
-          'max_tokens': 4096,
-          'temperature': 0.3,
-        }),
-      ).timeout(Duration(seconds: _timeoutSeconds));
-
-      if (response.statusCode == 200) {
-        final data   = jsonDecode(response.body) as Map<String, dynamic>;
-        final result = data['choices'][0]['message']['content'] as String;
-        return GroqResult(success: true, text: result.trim());
-      }
-
-      final err = _parseError(response.body);
-      return const GroqResult(success: false, text: '', error: 'Groq LLM : $err');
-
-    } on SocketException {
-      return const GroqResult(
-        success: false, text: '',
-        error: 'Pas de connexion internet',
-      );
-    } catch (e) {
-      return const GroqResult(success: false, text: '', error: e.toString());
-    }
-  }
-
-  // ── Chat avec historique ──────────────────────────────────────
-
-  Future<GroqResult> chat(String message, {String editorContext = ''}) async {
-    if (!isConfigured) {
-      return const GroqResult(success: false, text: '', error: 'Clé API Groq manquante');
-    }
-
-    String fullMessage = message;
-    if (editorContext.trim().isNotEmpty) {
-      final ctx = editorContext.length > 3000
-          ? editorContext.substring(0, 3000)
-          : editorContext;
-      fullMessage =
-          '[Texte dans l\'éditeur CalvoNote]\n---\n$ctx\n---\n\n$message';
-    }
-
-    _chatHistory.add({'role': 'user', 'content': fullMessage});
-
-    final history = _chatHistory.length > 20
-        ? _chatHistory.sublist(_chatHistory.length - 20)
-        : List<Map<String, String>>.from(_chatHistory);
-
-    try {
-      final response = await http.post(
-        Uri.parse('$_groqBase/chat/completions'),
-        headers: {
-          'Authorization': 'Bearer $_apiKey',
-          'Content-Type': 'application/json',
-        },
-        body: jsonEncode({
-          'model': _model,
-          'messages': [
-            {'role': 'system', 'content': _systemPrompts['chat']!},
-            ...history,
-          ],
-          'max_tokens': 2048,
-          'temperature': 0.7,
-        }),
-      ).timeout(Duration(seconds: _timeoutSeconds));
-
-      if (response.statusCode == 200) {
-        final data   = jsonDecode(response.body) as Map<String, dynamic>;
-        final result = data['choices'][0]['message']['content'] as String;
-        _chatHistory.add({'role': 'assistant', 'content': result.trim()});
-        return GroqResult(success: true, text: result.trim());
-      }
-
-      if (_chatHistory.isNotEmpty && _chatHistory.last['role'] == 'user') {
-        _chatHistory.removeLast();
-      }
-      final err = _parseError(response.body);
-      return const GroqResult(success: false, text: '', error: 'Chat : $err');
-
-    } on SocketException {
-      if (_chatHistory.isNotEmpty && _chatHistory.last['role'] == 'user') {
-        _chatHistory.removeLast();
-      }
-      return const GroqResult(
-        success: false, text: '',
-        error: 'Pas de connexion internet',
-      );
-    } catch (e) {
-      if (_chatHistory.isNotEmpty && _chatHistory.last['role'] == 'user') {
-        _chatHistory.removeLast();
-      }
-      return const GroqResult(success: false, text: '', error: e.toString());
-    }
-  }
-
-  void clearChatHistory() => _chatHistory.clear();
-
-  // ── Utilitaire ────────────────────────────────────────────────
-
-  String _parseError(String body) {
-    try {
-      final data = jsonDecode(body) as Map<String, dynamic>;
-      return (data['error']?['message'] as String? ?? body).substring(
-        0,
-        (data['error']?['message'] as String? ?? body).length.clamp(0, 150),
-      );
     } catch (_) {
-      return body.length > 150 ? '${body.substring(0, 150)}…' : body;
+      // ignore
     }
+    return 'Erreur Groq ($statusCode) : ${body.isEmpty ? "réponse vide" : body}';
   }
 }
 
-// ── Labels actions IA ─────────────────────────────────────────
-
-class AIAction {
-  final String key;
-  final String label;
-  final String icon;
-
-  const AIAction({required this.key, required this.label, required this.icon});
+class GroqException implements Exception {
+  final String message;
+  GroqException(this.message);
+  @override
+  String toString() => message;
 }
-
-const kAIActions = [
-  AIAction(key: 'correct',        label: 'Corriger',    icon: '✏️'),
-  AIAction(key: 'summarize',      label: 'Résumer',     icon: '📝'),
-  AIAction(key: 'rephrase',       label: 'Reformuler',  icon: '🔄'),
-  AIAction(key: 'keypoints',      label: 'Points clés', icon: '🔑'),
-  AIAction(key: 'title',          label: 'Titres',      icon: '🏷️'),
-  AIAction(key: 'translate_fr_en',label: 'FR → EN',     icon: '🌐'),
-  AIAction(key: 'translate_en_fr',label: 'EN → FR',     icon: '🌐'),
-];

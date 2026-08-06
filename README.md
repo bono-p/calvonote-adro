@@ -1,122 +1,35 @@
-# CalvoNote Mobile — Phase 1
+# CalvoNote Android
 
-> Transcription vocale FR / EN / Fulfulde Adamawa  
-> DevLab · Flutter Android
+Application mobile Android de **transcription vocale** (Français / Anglais) et de **traduction vers le Fulfulde Adamawa**, propulsée par l'IA **Groq**.
 
----
+## Fonctionnalités
 
-## Architecture Phase 1 (100% online)
+- 🎙️ **Enregistrement vocal** en ligne (micro du téléphone)
+- 📝 **Transcription automatique** en Français ou Anglais via **Groq Whisper Large v3**
+- 🌍 **Traduction** de la transcription vers le **Fulfulde Adamawa** via **Groq LLM** (llama-3.3-70b)
+- 💾 **Historique** local des transcriptions/traductions
+- 🔐 **Clés API configurables** directement dans l'app (stockées localement)
 
-```
-Micro → Groq Whisper API → Texte FR/EN
-                              ↓
-                   HF NLLB bonopassale → Texte Fulfulde
-                              ↓
-                   HF MMS-TTS-ful API → Audio WAV
-                              ↓
-                         Haut-parleur
-```
+## Stack technique
 
----
+- **Flutter** (Dart) — UI et logique
+- **Groq API** :
+  - `whisper-large-v3` pour la transcription vocale
+  - `llama-3.3-70b-versatile` pour la traduction FR→Fulfulde
+- **Codemagic** — CI/CD et compilation APK/AAB
 
-## Structure du projet
+## Compilation avec Codemagic
 
-```
-calvonote/
-├── lib/
-│   ├── main.dart                  # Point d'entrée
-│   ├── theme/
-│   │   └── app_theme.dart         # Couleurs, typographie
-│   ├── services/
-│   │   ├── groq_service.dart      # Transcription + LLM Groq
-│   │   ├── fuv_service.dart       # Traduction FR↔Fulfulde + TTS Fulfulde
-│   │   ├── audio_service.dart     # Enregistrement micro + lecture audio
-│   │   └── settings_service.dart  # Stockage sécurisé clés API
-│   ├── screens/
-│   │   ├── home_screen.dart       # Écran principal
-│   │   ├── translate_screen.dart  # Traduction manuelle FR↔Fulfulde
-│   │   ├── ai_screen.dart         # Outils IA (correction, résumé, chat)
-│   │   └── settings_screen.dart   # Paramètres et clés API
-│   └── widgets/
-│       ├── record_button.dart     # Bouton micro animé
-│       └── result_card.dart       # Carte résultat réutilisable
-├── android/
-│   ├── app/
-│   │   ├── build.gradle
-│   │   ├── proguard-rules.pro
-│   │   └── src/main/
-│   │       ├── AndroidManifest.xml
-│   │       ├── kotlin/com/devlab/calvonote/MainActivity.kt
-│   │       └── res/
-│   │           ├── xml/network_security_config.xml
-│   │           └── values/{styles,colors}.xml
-│   ├── build.gradle
-│   ├── settings.gradle
-│   └── gradle.properties
-├── pubspec.yaml
-└── codemagic.yaml
-```
+1. Connectez votre dépôt GitHub à [Codemagic](https://codemagic.io)
+2. Le fichier `codemagic.yaml` à la racine configure automatiquement le build
+3. Ajoutez la variable d'environnement `GROQ_API_KEY` dans Codemagic (Groups → api_keys)
+4. Lancez un build — l'APK sera disponible en artifact
 
----
+## Configuration locale
 
-## Installation et premier lancement
-
-### Prérequis
-- Flutter SDK ≥ 3.10 (`flutter --version`)
-- Android Studio ou VS Code avec extension Flutter
-- Appareil Android (API 24+) ou émulateur
-
-### 1. Installer les dépendances
 ```bash
 flutter pub get
-```
-
-### 2. Configurer les clés API
-Lance l'app, va dans **Paramètres** (icône ⚙️) et saisis :
-- **Clé API Groq** → https://console.groq.com (gratuit)
-- **Token HuggingFace** → https://huggingface.co/settings/tokens
-
-### 3. Lancer en debug
-```bash
 flutter run
 ```
 
-### 4. Builder un APK
-```bash
-flutter build apk --debug
-# APK dans : build/app/outputs/apk/debug/app-debug.apk
-```
-
----
-
-## Codemagic — Build cloud
-
-1. Connecte ton repo GitHub/GitLab à [codemagic.io](https://codemagic.io)
-2. Dans **Environment Variables** du dashboard, ajoute :
-   - `GROQ_API_KEY` → ta clé Groq (marquer comme **secret**)
-   - `HF_TOKEN` → ton token HF (marquer comme **secret**)
-3. Lance le workflow **android-debug** pour tester
-4. Pour la release, configure le keystore Android dans **Code signing**
-
----
-
-## Roadmap
-
-| Phase | Contenu | Statut |
-|-------|---------|--------|
-| **Phase 1** | Pipeline complet online (Groq + HF) | ✅ Ce livrable |
-| **Phase 2** | MMS-TTS-ful offline (ONNX on-device) | 🔜 |
-| **Phase 3** | Whisper Fulfulde offline (whisper.cpp GGML) | 🔜 |
-| **Phase 4** | Historique, partage, améliorations UX | 🔜 |
-
----
-
-## Modèles utilisés
-
-| Modèle | Usage | Mode |
-|--------|-------|------|
-| `whisper-large-v3-turbo` (Groq) | Transcription FR/EN/FUV | Online |
-| `bonopassale/nllb-fra-fuv-finetuned` | Traduction FR↔Fulfulde | Online |
-| `facebook/mms-tts-ful` | Synthèse vocale Fulfulde | Online Phase 1 → Offline Phase 2 |
-| `llama-3.3-70b-versatile` (Groq) | Correction, résumé, chat | Online |
-| TTS natif Android | Lecture FR/EN | Offline (intégré Android) |
+Dans l'app, allez dans **Paramètres** et saisissez votre clé API Groq.

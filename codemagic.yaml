@@ -1,11 +1,11 @@
 # ─────────────────────────────────────────────────────────────
 #  codemagic.yaml — CalvoNote Android
-#  Phase 1 : build Flutter Android (APK debug + AAB release)
+#  Build Flutter Android (APK debug + AAB release)
 # ─────────────────────────────────────────────────────────────
 
 workflows:
 
-  # ── Build debug rapide (test) ──────────────────────────────
+  # ── Build debug APK (test rapide) ─────────────────────────
   android-debug:
     name: CalvoNote Android Debug
     max_build_duration: 30
@@ -19,7 +19,7 @@ workflows:
       - name: Flutter pub get
         script: flutter pub get
 
-      - name: Analyse statique
+      - name: Analyse statique (non bloquante)
         script: flutter analyze --no-fatal-infos
         ignore_failure: true
 
@@ -33,12 +33,12 @@ workflows:
     publishing:
       email:
         recipients:
-          - ton-email@example.com   # ← remplace par ton email
+          - bono@example.com   # ← remplace par ton email
         notify:
           success: true
           failure: true
 
-  # ── Build release (Google Play) ────────────────────────────
+  # ── Build release AAB (publication Google Play) ───────────
   android-release:
     name: CalvoNote Android Release
     max_build_duration: 60
@@ -63,14 +63,9 @@ workflows:
       - build/**/outputs/mapping/release/mapping.txt
 
     publishing:
-      google_play:
-        credentials: $GCLOUD_SERVICE_ACCOUNT_CREDENTIALS
-        track: internal
-        submit_as_draft: true
-
       email:
         recipients:
-          - ton-email@example.com
+          - bono@example.com   # ← remplace par ton email
         notify:
           success: true
           failure: true

@@ -1,10 +1,11 @@
 name: calvonote
-description: CalvoNote — Transcription vocale FR / EN / Fulfulde Adamawa
+description: CalvoNote — Transcription vocale FR/EN et traduction Fulfulde via Groq
 version: 1.0.0+1
+publish_to: none
 
 environment:
-  sdk: ">=3.0.0 <4.0.0"
-  flutter: ">=3.10.0"
+  sdk: ">=3.3.0 <4.0.0"
+  flutter: ">=3.19.0"
 
 dependencies:
   flutter:
@@ -13,23 +14,17 @@ dependencies:
   # Audio — enregistrement micro
   record: ^5.1.2
 
-  # Audio — lecture fichiers WAV/MP3
-  audioplayers: ^6.0.0
-
-  # TTS natif Android (FR/EN)
-  flutter_tts: ^4.0.2
-
   # HTTP
-  http: ^1.2.1
-
-  # Stockage clés API (sécurisé)
-  flutter_secure_storage: ^9.2.2
+  http: ^1.2.2
 
   # Permissions micro
   permission_handler: ^11.3.1
 
   # Chemin fichiers temporaires
-  path_provider: ^2.1.3
+  path_provider: ^2.1.4
+
+  # Stockage clé-valeur (préférences + historique)
+  shared_preferences: ^2.3.2
 
   # Icônes
   cupertino_icons: ^1.0.8
