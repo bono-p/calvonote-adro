@@ -76,7 +76,7 @@ class GroqService {
   }) async {
     if (text.trim().isEmpty) return '';
 
-    final systemPrompt = '''
+    const systemPrompt = '''
 Tu es un traducteur professionnel anglais → français.
 Tu reçois un texte en anglais et tu dois le traduire en français standard, fidèlement et naturellement.
 - Ne renvoie QUE la traduction, sans commentaire, sans note, sans texte source.

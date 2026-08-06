@@ -72,7 +72,7 @@ class _RecordButtonState extends State<RecordButton>
                     width: 90,
                     height: 90,
                     decoration: BoxDecoration(
-                      color: color.withOpacity(opacity),
+                      color: color.withValues(alpha: opacity),
                       shape: BoxShape.circle,
                     ),
                   ),
@@ -88,7 +88,7 @@ class _RecordButtonState extends State<RecordButton>
               shape: BoxShape.circle,
               boxShadow: [
                 BoxShadow(
-                  color: color.withOpacity(0.4),
+                  color: color.withValues(alpha: 0.4),
                   blurRadius: 12,
                   offset: const Offset(0, 4),
                 ),
