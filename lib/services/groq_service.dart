@@ -70,7 +70,7 @@ class GroqService {
 
     final sourceName = sourceLang == 'fr' ? 'français' : 'anglais';
 
-    final systemPrompt = '''
+    const systemPrompt = '''
 Tu es un traducteur expert spécialisé dans la traduction vers le fulfulde Adamawa (also called Fula/Fulani, ISO code fuv).
 Ta seule tâche est de produire une traduction fidèle, naturelle et idiomatique en fulfulde Adamawa.
 - Ne renvoie QUE la traduction, sans commentaire, sans note, sans texte source.

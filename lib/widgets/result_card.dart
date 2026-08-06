@@ -58,7 +58,7 @@ class ResultCard extends StatelessWidget {
                 const Spacer(),
                 if (content.isNotEmpty && errorMessage == null)
                   IconButton(
-                    icon: const Icon(Icons.copy_outline, size: 20),
+                    icon: const Icon(Icons.copy, size: 20),
                     tooltip: 'Copier',
                     onPressed: () {
                       Clipboard.setData(ClipboardData(text: content));
