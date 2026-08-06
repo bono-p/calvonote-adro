@@ -3,12 +3,14 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 /// Service de stockage local pour :
 /// - clé API Groq
+/// - token HuggingFace (optionnel, pour améliorer les quotas du Space FR↔FUV)
 /// - historique des transcriptions
 class SettingsService {
   SettingsService._();
   static final SettingsService instance = SettingsService._();
 
   static const _kGroqApiKey = 'groq_api_key';
+  static const _kHfToken = 'hf_token';
   static const _kHistory = 'transcription_history';
   static const _kDefaultLang = 'default_language';
 
@@ -22,6 +24,11 @@ class SettingsService {
   String get groqApiKey => _prefs.getString(_kGroqApiKey) ?? '';
   Future<void> setGroqApiKey(String key) =>
       _prefs.setString(_kGroqApiKey, key);
+
+  // ─── HuggingFace Token (optionnel) ─────────────────────────
+  String get hfToken => _prefs.getString(_kHfToken) ?? '';
+  Future<void> setHfToken(String token) =>
+      _prefs.setString(_kHfToken, token);
 
   // ─── Langue par défaut ─────────────────────────────────────
   String get defaultLanguage => _prefs.getString(_kDefaultLang) ?? 'fr';

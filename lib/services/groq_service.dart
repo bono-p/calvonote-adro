@@ -3,14 +3,15 @@ import 'dart:io';
 import 'package:http/http.dart' as http;
 
 /// Service d'intégration avec l'API Groq.
-/// 1) transcription via Whisper Large v3
-/// 2) traduction vers le Fulfulde Adamawa via Llama 3.3 70B
+/// 1) transcription via Whisper Large v3 Turbo
+/// 2) pivot EN→FR via Llama 3.3 70B (utilisé pour EN→FUV via le Space HF)
 class GroqService {
   GroqService._();
   static final GroqService instance = GroqService._();
 
   static const String _baseUrl = 'https://api.groq.com/openai/v1';
-  static const String _sttModel = 'whisper-large-v3';
+  // whisper-large-v3-turbo : rapide + précis (recommandé par le desktop)
+  static const String _sttModel = 'whisper-large-v3-turbo';
   static const String _llmModel = 'llama-3.3-70b-versatile';
 
   /// Transcrit un fichier audio en texte.
@@ -46,6 +47,14 @@ class GroqService {
 
     final response = await http.Response.fromStream(streamedResponse);
 
+    if (response.statusCode == 401) {
+      throw GroqException(
+          'Clé API Groq invalide (401). Vérifiez Paramètres → Clé API Groq.');
+    }
+    if (response.statusCode == 429) {
+      throw GroqException(
+          'Quota Groq temporairement dépassé (429). Réessayez dans quelques minutes.');
+    }
     if (response.statusCode != 200) {
       throw GroqException(_extractError(response.body, response.statusCode));
     }
@@ -57,30 +66,26 @@ class GroqService {
     return (decoded['text'] as String).trim();
   }
 
-  /// Traduit un texte en Fulfulde Adamawa.
-  /// [text]   : texte source (FR ou EN)
-  /// [sourceLang] : 'fr' ou 'en'
-  /// [apiKey] : clé API Groq
-  Future<String> translateToFulfulde({
+  /// Pivot EN→FR via Groq LLM (llama-3.3-70b-versatile).
+  /// Utilisé pour la chaîne EN→FR→FUV (FR traduit en FUV via le Space HF).
+  ///
+  /// Retourne le texte français. Lève [GroqException] en cas d'erreur.
+  Future<String> translateEnToFr({
     required String text,
-    required String sourceLang,
     required String apiKey,
   }) async {
     if (text.trim().isEmpty) return '';
 
-    final sourceName = sourceLang == 'fr' ? 'français' : 'anglais';
-
     final systemPrompt = '''
-Tu es un traducteur expert spécialisé dans la traduction vers le fulfulde Adamawa (also called Fula/Fulani, ISO code fuv).
-Ta seule tâche est de produire une traduction fidèle, naturelle et idiomatique en fulfulde Adamawa.
+Tu es un traducteur professionnel anglais → français.
+Tu reçois un texte en anglais et tu dois le traduire en français standard, fidèlement et naturellement.
 - Ne renvoie QUE la traduction, sans commentaire, sans note, sans texte source.
 - Ne mets pas la traduction entre guillemets.
 - Conserve la ponctuation de fin de phrase.
-- Si un mot n'a pas d'équivalent direct, utilise la translittération la plus courante.
 ''';
 
     final userPrompt =
-        "Traduis le texte suivant du $sourceName vers le fulfulde Adamawa :\n\n\"\"\"\n$text\n\"\"\"";
+        "Traduis le texte suivant de l'anglais vers le français :\n\n\"\"\"\n$text\n\"\"\"";
 
     final uri = Uri.parse('$_baseUrl/chat/completions');
     final response = await http.post(
@@ -103,6 +108,10 @@ Ta seule tâche est de produire une traduction fidèle, naturelle et idiomatique
           throw GroqException('Timeout : la traduction a pris trop de temps'),
     );
 
+    if (response.statusCode == 401) {
+      throw GroqException(
+          'Clé API Groq invalide (401). Vérifiez Paramètres → Clé API Groq.');
+    }
     if (response.statusCode != 200) {
       throw GroqException(_extractError(response.body, response.statusCode));
     }

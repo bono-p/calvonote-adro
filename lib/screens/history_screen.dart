@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:share_plus/share_plus.dart';
 import '../models/transcription_entry.dart';
 import '../services/settings_service.dart';
 
@@ -137,8 +138,9 @@ class _HistoryScreenState extends State<HistoryScreen> {
                               const Spacer(),
                               IconButton(
                                 icon: const Icon(Icons.copy, size: 18),
-                                tooltip: 'Copier la traduction',
-                                onPressed: e.translation.isEmpty
+                                tooltip: 'Copier',
+                                onPressed: e.translation.isEmpty &&
+                                        e.transcription.isEmpty
                                     ? null
                                     : () {
                                         Clipboard.setData(ClipboardData(
@@ -149,6 +151,30 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                           content: Text('Copié'),
                                           duration: Duration(seconds: 1),
                                         ));
+                                      },
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.share_outlined,
+                                    size: 18),
+                                tooltip: 'Partager',
+                                onPressed: e.translation.isEmpty &&
+                                        e.transcription.isEmpty
+                                    ? null
+                                    : () {
+                                        final buffer = StringBuffer();
+                                        if (e.transcription.isNotEmpty) {
+                                          buffer.writeln(
+                                              '=== Transcription ${e.language.toUpperCase()} ===');
+                                          buffer.writeln(e.transcription);
+                                          buffer.writeln();
+                                        }
+                                        if (e.translation.isNotEmpty) {
+                                          buffer.writeln(
+                                              '=== Traduction Fulfulde ===');
+                                          buffer.writeln(e.translation);
+                                        }
+                                        Share.share(buffer.toString().trim(),
+                                            subject: 'CalvoNote');
                                       },
                               ),
                             ],

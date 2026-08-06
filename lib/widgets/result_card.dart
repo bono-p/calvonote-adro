@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:share_plus/share_plus.dart';
 
-/// Carte affichant un bloc de texte avec titre, libellé de langue et bouton copier.
+/// Carte affichant un bloc de texte avec titre, libellé de langue,
+/// boutons copier et partager.
 class ResultCard extends StatelessWidget {
   final String title;
   final String? languageLabel;
@@ -56,7 +58,7 @@ class ResultCard extends StatelessWidget {
                   ),
                 ],
                 const Spacer(),
-                if (content.isNotEmpty && errorMessage == null)
+                if (content.isNotEmpty && errorMessage == null) ...[
                   IconButton(
                     icon: const Icon(Icons.copy_outline, size: 20),
                     tooltip: 'Copier',
@@ -70,6 +72,14 @@ class ResultCard extends StatelessWidget {
                       );
                     },
                   ),
+                  IconButton(
+                    icon: const Icon(Icons.share_outlined, size: 20),
+                    tooltip: 'Partager',
+                    onPressed: () {
+                      Share.share(content, subject: title);
+                    },
+                  ),
+                ],
               ],
             ),
             const SizedBox(height: 8),

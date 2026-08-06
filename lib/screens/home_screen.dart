@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:share_plus/share_plus.dart';
 import '../models/transcription_entry.dart';
 import '../services/audio_recorder_service.dart';
+import '../services/fuv_space_service.dart';
 import '../services/groq_service.dart';
 import '../services/settings_service.dart';
 import '../widgets/record_button.dart';
 import '../widgets/result_card.dart';
+import 'edit_transcription_screen.dart';
 import 'history_screen.dart';
 import 'settings_screen.dart';
 
@@ -21,6 +24,7 @@ enum _Stage { idle, recording, transcribing, translating, done }
 class _HomeScreenState extends State<HomeScreen> {
   final _audio = AudioRecorderService.instance;
   final _groq = GroqService.instance;
+  final _fuv = FuvSpaceService.instance;
   final _settings = SettingsService.instance;
 
   String _selectedLang = 'fr';
@@ -28,6 +32,7 @@ class _HomeScreenState extends State<HomeScreen> {
   String _transcription = '';
   String _translation = '';
   String? _error;
+  String? _lastAudioPath;
   Duration _recordDuration = Duration.zero;
 
   @override
@@ -58,6 +63,7 @@ class _HomeScreenState extends State<HomeScreen> {
       _error = null;
       _transcription = '';
       _translation = '';
+      _lastAudioPath = null;
       _recordDuration = Duration.zero;
     });
 
@@ -77,7 +83,8 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     try {
-      await _audio.start();
+      final path = await _audio.start();
+      _lastAudioPath = path;
       setState(() => _stage = _Stage.recording);
       _startTimer();
     } catch (e) {
@@ -109,6 +116,7 @@ class _HomeScreenState extends State<HomeScreen> {
       setState(() => _stage = _Stage.idle);
       return;
     }
+    _lastAudioPath = audioPath;
 
     // 1) Transcription
     setState(() {
@@ -121,47 +129,94 @@ class _HomeScreenState extends State<HomeScreen> {
         language: _selectedLang,
         apiKey: _settings.groqApiKey,
       );
-      setState(() => _transcription = text);
+      setState(() {
+        _transcription = text;
+        _stage = _Stage.done;
+      });
 
       if (text.isEmpty) {
-        setState(() {
-          _stage = _Stage.done;
-          _translation = '(Aucun discours détecté)';
-        });
+        setState(() => _translation = '(Aucun discours détecté)');
         await _saveHistory(audioPath, text, '', null);
-        return;
       }
+      // L'utilisateur doit confirmer via le bouton "Éditer & Traduire"
     } catch (e) {
       setState(() {
         _stage = _Stage.done;
         _error = 'Transcription échouée : $e';
       });
       await _saveHistory(audioPath, '', '', e.toString());
-      return;
     }
+  }
 
-    // 2) Traduction FR→Fulfulde
+  /// Ouvre l'écran d'édition, puis lance la traduction avec le texte édité.
+  Future<void> _editAndTranslate() async {
+    if (_transcription.isEmpty) return;
+
+    final edited = await Navigator.of(context).push<String>(
+      MaterialPageRoute(
+        builder: (_) => EditTranscriptionScreen(
+          initialText: _transcription,
+          language: _selectedLang,
+        ),
+      ),
+    );
+
+    if (edited == null) return; // utilisateur a annulé
+
+    // Met à jour la transcription éditée
+    setState(() => _transcription = edited);
+    await _launchTranslation(edited);
+  }
+
+  /// Lance la traduction vers le Fulfulde.
+  /// - Si la source est FR : appel direct au Space HF FR→FUV
+  /// - Si la source est EN : pivot EN→FR via Groq, puis FR→FUV via le Space HF
+  Future<void> _launchTranslation(String sourceText) async {
     setState(() {
       _stage = _Stage.translating;
+      _error = null;
+      _translation = '';
     });
+
     try {
-      final translated = await _groq.translateToFulfulde(
-        text: _transcription,
-        sourceLang: _selectedLang,
-        apiKey: _settings.groqApiKey,
+      String frText = sourceText;
+
+      // Pivot EN→FR via Groq
+      if (_selectedLang == 'en') {
+        try {
+          frText = await _groq.translateEnToFr(
+            text: sourceText,
+            apiKey: _settings.groqApiKey,
+          );
+        } catch (e) {
+          setState(() {
+            _error = 'Pivot EN→FR échoué : $e';
+            _stage = _Stage.done;
+          });
+          await _saveHistory(
+              _lastAudioPath ?? '', sourceText, '', e.toString());
+          return;
+        }
+      }
+
+      // FR → FUV via le Space HF
+      final fuv = await _fuv.translateFrToFuv(
+        text: frText,
+        hfToken: _settings.hfToken,
       );
+
       setState(() {
-        _translation = translated;
+        _translation = fuv;
         _stage = _Stage.done;
       });
-      await _saveHistory(audioPath, _transcription, translated, null);
+      await _saveHistory(_lastAudioPath ?? '', sourceText, fuv, null);
     } catch (e) {
       setState(() {
         _translation = '';
         _error = 'Traduction échouée : $e';
         _stage = _Stage.done;
       });
-      await _saveHistory(audioPath, _transcription, '', e.toString());
+      await _saveHistory(_lastAudioPath ?? '', sourceText, '', e.toString());
     }
   }
 
@@ -195,15 +250,38 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  void _shareAll() {
+    if (_transcription.isEmpty && _translation.isEmpty) return;
+    final buffer = StringBuffer();
+    if (_transcription.isNotEmpty) {
+      buffer.writeln('=== Transcription (${_selectedLang.toUpperCase()}) ===');
+      buffer.writeln(_transcription);
+      buffer.writeln();
+    }
+    if (_translation.isNotEmpty) {
+      buffer.writeln('=== Traduction Fulfulde ===');
+      buffer.writeln(_translation);
+    }
+    Share.share(buffer.toString().trim(), subject: 'CalvoNote');
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isRecording = _stage == _Stage.recording;
+    final canEditAndTranslate =
+        _stage == _Stage.done && _transcription.isNotEmpty;
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('CalvoNote'),
         actions: [
+          if (_transcription.isNotEmpty || _translation.isNotEmpty)
+            IconButton(
+              icon: const Icon(Icons.share),
+              tooltip: 'Partager tout',
+              onPressed: _shareAll,
+            ),
           IconButton(
             icon: const Icon(Icons.history),
             tooltip: 'Historique',
@@ -274,6 +352,19 @@ class _HomeScreenState extends State<HomeScreen> {
                     content: _transcription,
                     isLoading: _stage == _Stage.transcribing,
                   ),
+                  if (canEditAndTranslate)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4, bottom: 4),
+                      child: FilledButton.icon(
+                        onPressed: _editAndTranslate,
+                        icon: const Icon(Icons.edit),
+                        label: Text(
+                          _selectedLang == 'en'
+                              ? 'Éditer & traduire (pivot EN→FR→FUV)'
+                              : 'Éditer & traduire en Fulfulde',
+                        ),
+                      ),
+                    ),
                   ResultCard(
                     title: 'Traduction Fulfulde',
                     languageLabel: 'fuv',

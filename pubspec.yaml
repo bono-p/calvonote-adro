@@ -1,6 +1,6 @@
 name: calvonote
-description: CalvoNote — Transcription vocale FR/EN et traduction Fulfulde via Groq
-version: 1.0.0+1
+description: CalvoNote — Transcription vocale FR/EN et traduction Fulfulde via Groq + HuggingFace Space
+version: 1.1.0+2
 publish_to: none
 
 environment:
@@ -25,6 +25,9 @@ dependencies:
 
   # Stockage clé-valeur (préférences + historique)
   shared_preferences: ^2.3.2
+
+  # Partage de texte vers autres apps
+  share_plus: ^10.0.0
 
   # Icônes
   cupertino_icons: ^1.0.8

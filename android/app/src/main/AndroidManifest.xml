@@ -54,5 +54,10 @@
             <action android:name="android.intent.action.PROCESS_TEXT" />
             <data android:mimeType="text/plain" />
         </intent>
+        <!-- Pour share_plus : permettre de lister les apps capables de partager du texte -->
+        <intent>
+            <action android:name="android.intent.action.SEND" />
+            <data android:mimeType="text/*" />
+        </intent>
     </queries>
 </manifest>
